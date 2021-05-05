@@ -1,0 +1,155 @@
+
+user  nginx;
+worker_processes  auto;
+
+error_log  /var/log/nginx/error.log notice;
+pid        /var/run/nginx.pid;
+
+# No. of Clients that can be simultaneously served by Nginx
+
+   events {
+       worker_connections  1024;
+}
+
+# defining http directive for http request
+# Define which back-end servers to include in the load balancing scheme defined with Upstream directive
+# We can add multiple servers (cluster, round robin) and failover / maint. servers
+# LOADBALANCING
+
+http {
+    #log_format  main '$remote_addr - $remote_user [$time_local] ' '"$request" $status $body_bytes_sent ' '"$http_referer" "$http_user_agent" "$gzip_ratio"';
+
+   upstream sandbox {
+         #least_time header;
+         #hash $remote_addr;
+         server T-HPY-WEB000-01.hpdasp.int:443; 
+         #server T-HPY-WEB000-02.hpdasp.int:443 route=N2;
+        #server T-HPY-WEB000-03.hpdasp.int:443 route=N3;
+         #server T-HPY-WEB000-01.hpdasp.int:5010 route=M1 backup;
+         #sticky cookie srv_id httponly samesite=none secure path=/;
+
+  }
+
+# 2 Server Directives to redirect all HTTP to HTTPS
+# This server is listening on port 80, redirect all DNS + URI request to https
+ 
+     server {
+          listen 80;
+          server_name aurataskforce.hpdsc.com;
+          return 301 https://aurataskforce.hpdsc.com$request_uri;
+ }
+
+
+# This server is listening on port 443 (https requests)
+ 
+   server {
+        listen 443 ssl;
+        server_name aurataskforce.hpdsc.com;
+ 
+        # Strict transport Security Header
+         add_header Strict-Transport-Security "max-age=63072000; includeSubDomains" always;  
+ 
+        # Content Security Policy Header
+         add_header Content-Security-Policy "default-src 'self'; font-src 'self' data:; img-src 'self' data:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'"; 
+ 
+        # X-XSS-Protection
+         add_header X-XSS-Protection "1; mode=block";
+ 
+        # X-Content-Type-Options header
+         add_header X-Content-Type-Options nosniff;
+ 
+        # Cache-control header
+        #expires 1d;
+         add_header Cache-Control "no-store";
+ 
+        # Same-Origin referrer policy
+         add_header Referrer-Policy same-origin;
+ 
+        # X-Frame-Options
+         add_header X-Frame-Options "SAMEORIGIN";
+ 
+        # gzip compression for improving performance
+        gzip on;
+        gzip_comp_level 3; 
+        gzip_types text/css;
+        gzip_types text/javascript;
+ 
+        # Hardening Nginx
+         server_tokens off;
+ 
+        #Defining location of cert and private key
+         ssl_certificate /etc/ssl/nginx/hpdsc.crt;
+         ssl_certificate_key /etc/ssl/nginx/hpdsc.rsa;
+     
+        # Disable SSL, TLS Enabled
+         ssl_protocols TLSv1.2;
+     
+        # Optimise cipher suits
+         ssl_prefer_server_ciphers on;
+         ssl_ciphers HIGH:!aNULL:!MD5;
+     
+        # SSL sessions
+         ssl_session_cache shared:SSL:10m;
+         ssl_session_timeout 10m;
+     
+        # 443 Server will close connection after this timeout -- default 75
+         keepalive_timeout 70;
+ 
+        # location directive to determine where the webapp or page is
+        # we can add different paths here to add different proxy controls depending on what page the client hits.
+        # / refers to ROOT (base dir)
+        #REVERSE PROXY
+
+    location / {
+        proxy_pass https://sandbox;
+        proxy_bind 172.24.1.11;
+
+      }
+
+   location /api/ {
+        api write=on;
+   }
+   
+  location = /dashboard.html {
+       root /usr/share/nginx/html;
+   } 
+
+   location /status.html {
+        return 301 /dashboard.html;
+  }
+ 
+   location /swagger-ui/ {
+      root /usr/share/nginx/html;
+      index index.html;
+   }
+
+     proxy_set_header Accept-Encoding   "";
+        proxy_set_header Host $http_host;
+        proxy_connect_timeout 600;
+        proxy_send_timeout 600;
+        proxy_read_timeout 600;
+        send_timeout 600;
+     
+        #proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+
+
+        # Error logging for this particular set of server directives.
+        access_log     /var/log/nginx/ssl-access.log;
+        error_log      /var/log/nginx/ssl-error.log;
+
+       include       /etc/nginx/mime.types;
+       default_type  application/octet-stream;
+
+
+       #access_log  /var/log/nginx/access.log  main;
+
+       #sendfile        on;
+       #tcp_nopush     on;
+   
+ }  
+   #include /etc/nginx/conf.d/*.conf;
+}
